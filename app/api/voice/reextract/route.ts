@@ -35,7 +35,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json()
-    const { sessionId, startSec, durationSec = 30 } = body
+    const { sessionId, startSec, durationSec = 15 } = body
 
     if (!sessionId || typeof sessionId !== 'string') {
       return NextResponse.json({ error: 'Missing sessionId' }, { status: 400 })

@@ -23,7 +23,6 @@ const LANG_STOPWORDS: Record<string, string[]> = {
 
 function detectLanguage(text: string): string {
   const lower = text.toLowerCase()
-  // Split on anything that isn't a letter/digit — whole words only, no substring matches
   const wordSet = new Set(lower.split(/[^a-z0-9\u00c0-\u024f\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/).filter(Boolean))
 
   let bestLang = 'en'
@@ -34,10 +33,7 @@ function detectLanguage(text: string): string {
     if (score > bestScore) { bestScore = score; bestLang = lang }
   }
 
-  // Require at least 2 matching stopwords to trust a non-English result;
-  // otherwise fall back to English (most executive content defaults to EN)
   if (bestLang !== 'en' && bestScore < 2) return 'en'
-
   return bestLang
 }
 
@@ -63,12 +59,17 @@ const PODCAST_DOMAINS = [
   'omny.fm',
   'megaphone.fm',
   'acast.com',
+  'audioboom.com',
+  'podcastone.com',
+  'pinecast.com',
+  'blubrry.com',
+  'anchor.fm',
+  'podcasts.google.com',
 ]
 
 const ALLOWED_DOMAINS = [...YTDLP_DOMAINS, ...PODCAST_DOMAINS]
 
 function inferType(query: string, url: string): MediaResult['type'] {
-  // Native podcast hosting platforms always = podcast
   if (PODCAST_DOMAINS.some((d) => url.includes(d))) return 'podcast'
   if (url.includes('youtube.com') || url.includes('youtu.be') || url.includes('vimeo.com')) {
     if (query.includes('keynote')) return 'keynote'
@@ -79,28 +80,39 @@ function inferType(query: string, url: string): MediaResult['type'] {
   return 'other'
 }
 
+// Score how well a result matches the executive name — higher = more relevant
+function relevanceScore(name: string, title: string, snippet: string): number {
+  const nameParts = name.toLowerCase().split(/\s+/).filter((p) => p.length > 1)
+  const haystack = `${title} ${snippet}`.toLowerCase()
+  return nameParts.filter((p) => haystack.includes(p)).length
+}
+
 export async function searchExecutiveMedia(name: string, title: string, companyUrl: string = ''): Promise<MediaResult[]> {
   const serperKey = process.env.SERPER_API_KEY
   if (!serperKey) throw new Error('SERPER_API_KEY not set')
 
-  // Extract a short company name from the URL to anchor the search
   let companyName = ''
   try {
     companyName = new URL(companyUrl).hostname
       .replace(/^www\./, '')
-      .split('.')[0] // e.g. "siemens" from "siemens.com"
+      .split('.')[0]
   } catch { /* companyUrl may be empty */ }
 
-  // Include company name in queries when available to avoid name collisions
   const anchor = companyName ? ` "${companyName}"` : ''
 
-  const podcastSites = 'site:buzzsprout.com OR site:libsyn.com OR site:simplecast.com OR site:acast.com OR site:omny.fm OR site:megaphone.fm OR site:podigee.io'
+  // Podcast hosting sites — split into two groups so Google handles the OR lists better
+  const podcastSitesA = 'site:buzzsprout.com OR site:libsyn.com OR site:simplecast.com OR site:acast.com OR site:omny.fm'
+  const podcastSitesB = 'site:megaphone.fm OR site:podigee.io OR site:audioboom.com OR site:spreaker.com OR site:podbean.com'
 
   const queries = [
-    `"${name}"${anchor} podcast interview site:youtube.com`,         // podcasts on YouTube (best quality)
-    `"${name}"${anchor} podcast OR interview site:youtube.com`,      // broader YouTube search
-    `"${name}"${anchor} keynote OR talk OR speech site:youtube.com`, // keynotes / conference talks
-    `"${name}"${anchor} podcast episode (${podcastSites})`,          // native podcast hosting platforms
+    // Podcast-first: native hosting platforms (two batches for better Google coverage)
+    `"${name}"${anchor} podcast (${podcastSitesA})`,
+    `"${name}"${anchor} podcast (${podcastSitesB})`,
+    // Broad podcast search — catches any hosting platform not in our explicit list
+    `"${name}"${anchor} podcast interview guest`,
+    // YouTube podcasts & interviews
+    `"${name}"${anchor} podcast interview site:youtube.com`,
+    `"${name}"${anchor} keynote OR talk OR speech site:youtube.com`,
   ]
 
   const allResults: MediaResult[] = []
@@ -139,7 +151,6 @@ export async function searchExecutiveMedia(name: string, title: string, companyU
           const allowed = ALLOWED_DOMAINS.some((d) => url.includes(d))
           if (!allowed) continue
 
-          // Skip YouTube playlist/podcast series pages — only individual watch URLs are downloadable
           if (url.includes('youtube.com/playlist') || url.includes('youtube.com/podcast') || url.includes('music.youtube.com/podcast')) continue
 
           seen.add(url)
@@ -165,10 +176,15 @@ export async function searchExecutiveMedia(name: string, title: string, companyU
     })
   )
 
-  // Sort by audio quality preference: podcasts first, then keynotes, then general YouTube
+  // Sort: podcasts first, then by how prominently the executive's name appears in the title
   const TYPE_PRIORITY: Record<string, number> = { podcast: 0, keynote: 1, youtube: 2, other: 3 }
-  allResults.sort((a, b) => (TYPE_PRIORITY[a.type] ?? 3) - (TYPE_PRIORITY[b.type] ?? 3))
+  allResults.sort((a, b) => {
+    const typeDiff = (TYPE_PRIORITY[a.type] ?? 3) - (TYPE_PRIORITY[b.type] ?? 3)
+    if (typeDiff !== 0) return typeDiff
+    // Within same type: rank by how well the title/snippet matches the executive name
+    return relevanceScore(name, b.title, b.snippet ?? '') - relevanceScore(name, a.title, a.snippet ?? '')
+  })
 
   console.log(`[search] Total results after filtering: ${allResults.length}`)
-  return allResults.slice(0, 10)
+  return allResults.slice(0, 20)
 }

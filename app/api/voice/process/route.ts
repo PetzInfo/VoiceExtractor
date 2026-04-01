@@ -160,8 +160,8 @@ async function diarizeAndExtract(
   if (!apiKey) {
     // No AssemblyAI — fall back to a clip starting at 60s (skip intro)
     console.log('[diarize] No ASSEMBLYAI_API_KEY — using fallback clip at 60s')
-    await extractClip(audioPath, outputPath, 60, 30)
-    return { diarization: null, method: 'fallback_clip', windowStart: 60, windowEnd: 90 }
+    await extractClip(audioPath, outputPath, 60, 15)
+    return { diarization: null, method: 'fallback_clip', windowStart: 60, windowEnd: 75 }
   }
 
   try {
@@ -169,8 +169,8 @@ async function diarizeAndExtract(
     const stats = await fs.stat(audioPath)
     if (stats.size < 10_000) {
       console.warn('[diarize] Audio file too small to diarize, using fallback')
-      await extractClip(audioPath, outputPath, 60, 30)
-      return { diarization: null, method: 'fallback_clip', windowStart: 60, windowEnd: 90 }
+      await extractClip(audioPath, outputPath, 60, 15)
+      return { diarization: null, method: 'fallback_clip', windowStart: 60, windowEnd: 75 }
     }
 
     // Upload the full downloaded audio (more reliable than a trimmed chunk)
@@ -214,8 +214,8 @@ async function diarizeAndExtract(
 
     if (utterances.length === 0) {
       console.warn('[diarize] No utterances returned — falling back to clip')
-      await extractClip(audioPath, outputPath, 60, 30)
-      return { diarization: null, method: 'fallback_clip', windowStart: 60, windowEnd: 90 }
+      await extractClip(audioPath, outputPath, 60, 15)
+      return { diarization: null, method: 'fallback_clip', windowStart: 60, windowEnd: 75 }
     }
 
     // 4. Find dominant speaker (most total speaking time = executive/interviewee)
@@ -226,8 +226,8 @@ async function diarizeAndExtract(
     const dominantSpeaker = Object.entries(speakerTime).sort((a, b) => b[1] - a[1])[0][0]
     console.log(`[diarize] Speaker times:`, speakerTime, `→ dominant: ${dominantSpeaker}`)
 
-    // 5. Slide a 30s window across the timeline, find where executive speaks the most
-    const WINDOW_MS = 30000
+    // 5. Slide a 15s window across the timeline, find where executive speaks the most
+    const WINDOW_MS = 15000
     const STEP_MS = 1000 // 1s resolution
 
     const totalDuration = utterances[utterances.length - 1].end
@@ -254,7 +254,7 @@ async function diarizeAndExtract(
 
     const bestWindowStartSec = bestWindowStart / 1000
     const bestWindowEndSec = bestWindowStartSec + WINDOW_MS / 1000
-    console.log(`[diarize] Best 30s window at ${bestWindowStartSec}s — executive speaks ${(bestExecMs / 1000).toFixed(1)}s out of 30s`)
+    console.log(`[diarize] Best 15s window at ${bestWindowStartSec}s — executive speaks ${(bestExecMs / 1000).toFixed(1)}s out of 15s`)
 
     // 6. Extract ONLY the executive's utterances within that window (no interviewer audio)
     await extractExecutiveOnlyClip(
@@ -272,8 +272,8 @@ async function diarizeAndExtract(
     return { diarization, method: 'diarization', windowStart: bestWindowStartSec, windowEnd: bestWindowEndSec }
   } catch (err) {
     console.warn('[diarize] Failed, falling back to clip:', err)
-    await extractClip(audioPath, outputPath, 60, 30)
-    return { diarization: null, method: 'fallback_clip', windowStart: 60, windowEnd: 90 }
+    await extractClip(audioPath, outputPath, 60, 15)
+    return { diarization: null, method: 'fallback_clip', windowStart: 60, windowEnd: 75 }
   }
 }
 
