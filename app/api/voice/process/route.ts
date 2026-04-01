@@ -97,7 +97,7 @@ function extractExecutiveOnlyClip(
 
     if (segments.length === 0) {
       // Nothing to stitch — fall back to plain clip extraction
-      return extractClip(inputPath, outputPath, windowStartMs / 1000, 30)
+      return extractClip(inputPath, outputPath, windowStartMs / 1000, 15)
         .then(resolve).catch(reject)
     }
 
@@ -173,8 +173,16 @@ async function diarizeAndExtract(
       return { diarization: null, method: 'fallback_clip', windowStart: 60, windowEnd: 75 }
     }
 
-    // Upload the full downloaded audio (more reliable than a trimmed chunk)
-    const audioBuffer = await fs.readFile(audioPath)
+    // Extract a 5-minute analysis chunk (skip 60s intro) — ~5 MB instead of 80 MB
+    // Diarizing the full file is slow; 5 min is more than enough to identify speakers
+    const ANALYSIS_START_SEC = 60
+    const ANALYSIS_DURATION_SEC = 300
+    const chunkPath = path.join(tmpDir, `${uuidv4()}_chunk.mp3`)
+    await extractClip(audioPath, chunkPath, ANALYSIS_START_SEC, ANALYSIS_DURATION_SEC)
+
+    const audioBuffer = await fs.readFile(chunkPath)
+    await fs.unlink(chunkPath).catch(() => {})
+
     const uploadRes = await fetch('https://api.assemblyai.com/v2/upload', {
       method: 'POST',
       headers: { authorization: apiKey, 'content-type': 'application/octet-stream' },
@@ -218,13 +226,25 @@ async function diarizeAndExtract(
       return { diarization: null, method: 'fallback_clip', windowStart: 60, windowEnd: 75 }
     }
 
-    // 4. Find dominant speaker (most total speaking time = executive/interviewee)
-    const speakerTime: Record<string, number> = {}
+    // 4. Identify the executive — the guest in an interview speaks in longer utterances
+    // Score = total speaking time × average utterance length (favours the interviewee over the host)
+    const speakerStats: Record<string, { totalMs: number; count: number }> = {}
     for (const u of utterances) {
-      speakerTime[u.speaker] = (speakerTime[u.speaker] ?? 0) + (u.end - u.start)
+      if (!speakerStats[u.speaker]) speakerStats[u.speaker] = { totalMs: 0, count: 0 }
+      speakerStats[u.speaker].totalMs += u.end - u.start
+      speakerStats[u.speaker].count += 1
     }
-    const dominantSpeaker = Object.entries(speakerTime).sort((a, b) => b[1] - a[1])[0][0]
-    console.log(`[diarize] Speaker times:`, speakerTime, `→ dominant: ${dominantSpeaker}`)
+    const dominantSpeaker = Object.entries(speakerStats)
+      .map(([speaker, { totalMs, count }]) => ({
+        speaker,
+        score: totalMs * (totalMs / count), // total time × avg utterance length
+      }))
+      .sort((a, b) => b.score - a.score)[0].speaker
+
+    const speakerTime = Object.fromEntries(
+      Object.entries(speakerStats).map(([s, { totalMs }]) => [s, totalMs])
+    )
+    console.log(`[diarize] Speaker stats:`, speakerStats, `→ executive: ${dominantSpeaker}`)
 
     // 5. Slide a 15s window across the timeline, find where executive speaks the most
     const WINDOW_MS = 15000
@@ -252,14 +272,23 @@ async function diarizeAndExtract(
       }
     }
 
-    const bestWindowStartSec = bestWindowStart / 1000
+    // Map chunk-relative times back to absolute positions in the full audio
+    const ANALYSIS_START_MS = ANALYSIS_START_SEC * 1000
+    const bestWindowStartSec = bestWindowStart / 1000 + ANALYSIS_START_SEC
     const bestWindowEndSec = bestWindowStartSec + WINDOW_MS / 1000
-    console.log(`[diarize] Best 15s window at ${bestWindowStartSec}s — executive speaks ${(bestExecMs / 1000).toFixed(1)}s out of 15s`)
+    console.log(`[diarize] Best 15s window at ${bestWindowStartSec}s (absolute) — executive speaks ${(bestExecMs / 1000).toFixed(1)}s out of 15s`)
+
+    // Shift utterance times to absolute positions for clip extraction
+    const absoluteUtterances = utterances.map(u => ({
+      ...u,
+      start: u.start + ANALYSIS_START_MS,
+      end: u.end + ANALYSIS_START_MS,
+    }))
 
     // 6. Extract ONLY the executive's utterances within that window (no interviewer audio)
     await extractExecutiveOnlyClip(
-      audioPath, outputPath, utterances, dominantSpeaker,
-      bestWindowStart, bestWindowStart + WINDOW_MS
+      audioPath, outputPath, absoluteUtterances, dominantSpeaker,
+      (bestWindowStart + ANALYSIS_START_MS), (bestWindowStart + ANALYSIS_START_MS) + WINDOW_MS
     )
 
     const diarization = {
