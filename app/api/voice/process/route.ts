@@ -13,7 +13,68 @@ const FFMPEG_ENV = {
   PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH ?? ''}`,
 }
 
+function isYouTubeUrl(url: string): boolean {
+  return /youtube\.com\/watch|youtu\.be\/|youtube\.com\/shorts/.test(url)
+}
+
+// Download YouTube audio via cobalt.tools API — avoids yt-dlp datacenter IP blocks
+async function downloadYouTubeViaCobalt(url: string, outputDir: string): Promise<string> {
+  const id = uuidv4()
+  const outputPath = path.join(outputDir, `${id}.mp3`)
+
+  console.log('[cobalt] Requesting audio via cobalt.tools API...')
+  const cobaltRes = await fetch('https://api.cobalt.tools/', {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      url,
+      downloadMode: 'audio',
+      audioFormat: 'mp3',
+      audioBitrate: '320',
+    }),
+  })
+
+  if (!cobaltRes.ok) {
+    const body = await cobaltRes.text()
+    throw new Error(`cobalt.tools API error ${cobaltRes.status}: ${body.slice(0, 200)}`)
+  }
+
+  const data = await cobaltRes.json()
+  console.log('[cobalt] Response status:', data.status)
+
+  let downloadUrl: string | undefined
+  if (data.status === 'redirect' || data.status === 'tunnel') {
+    downloadUrl = data.url
+  } else if (data.status === 'picker' && data.audio) {
+    downloadUrl = data.audio
+  } else if (data.status === 'error') {
+    throw new Error(`cobalt.tools error: ${data.error?.code ?? JSON.stringify(data.error)}`)
+  } else {
+    throw new Error(`Unexpected cobalt.tools response: ${JSON.stringify(data).slice(0, 200)}`)
+  }
+
+  // Stream the audio file to disk
+  console.log('[cobalt] Downloading audio from:', downloadUrl)
+  const audioRes = await fetch(downloadUrl)
+  if (!audioRes.ok) throw new Error(`Failed to fetch audio from cobalt URL: ${audioRes.status}`)
+
+  const audioBuffer = Buffer.from(await audioRes.arrayBuffer())
+  if (audioBuffer.length < 1000) throw new Error('cobalt.tools returned an empty audio file')
+
+  await fs.writeFile(outputPath, audioBuffer)
+  console.log(`[cobalt] Saved ${(audioBuffer.length / 1024 / 1024).toFixed(1)} MB to ${outputPath}`)
+  return outputPath
+}
+
 async function downloadAudio(url: string, outputDir: string): Promise<string> {
+  // Route YouTube URLs through cobalt.tools to avoid datacenter IP blocks
+  if (isYouTubeUrl(url)) {
+    return downloadYouTubeViaCobalt(url, outputDir)
+  }
+
   const { spawn } = await import('child_process')
   const id = uuidv4()
   // Use a fixed output path — yt-dlp will convert to mp3 and write exactly this file
@@ -26,9 +87,6 @@ async function downloadAudio(url: string, outputDir: string): Promise<string> {
       '--audio-quality', '0',
       '--no-playlist',
       '--no-continue',
-      // Simulate a real iOS YouTube app — bypasses datacenter IP blocks
-      '--extractor-args', 'youtube:player_client=ios',
-      '--add-headers', 'User-Agent:com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)',
       '-o', outputPath,
       url,
     ], { env: FFMPEG_ENV })
