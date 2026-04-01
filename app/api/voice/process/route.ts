@@ -26,8 +26,8 @@ async function downloadAudio(url: string, outputDir: string): Promise<string> {
       '--audio-quality', '0',
       '--no-playlist',
       '--no-continue',
-      // Use the iOS client — bypasses YouTube's bot/login requirement on server IPs
-      '--extractor-args', 'youtube:player_client=ios',
+      // Use iOS + TV embedded clients — bypasses YouTube's bot/login requirement on server IPs
+      '--extractor-args', 'youtube:player_client=ios,tv_embedded,mweb',
       '-o', outputPath,
       url,
     ], { env: FFMPEG_ENV })
