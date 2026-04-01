@@ -45,11 +45,11 @@ async function downloadYouTubeViaCobalt(url: string, outputDir: string): Promise
   const data = await cobaltRes.json()
   console.log('[cobalt] Response status:', data.status)
 
-  let downloadUrl: string | undefined
+  let downloadUrl: string
   if (data.status === 'redirect' || data.status === 'tunnel') {
-    downloadUrl = data.url
+    downloadUrl = data.url as string
   } else if (data.status === 'picker' && data.audio) {
-    downloadUrl = data.audio
+    downloadUrl = data.audio as string
   } else if (data.status === 'error') {
     throw new Error(`cobalt.tools error: ${data.error?.code ?? JSON.stringify(data.error)}`)
   } else {
