@@ -17,6 +17,56 @@ function isYouTubeUrl(url: string): boolean {
   return /youtube\.com\/watch|youtu\.be\/|youtube\.com\/shorts/.test(url)
 }
 
+// Download YouTube audio via yt-dlp OAuth2 — authenticated requests bypass datacenter IP blocks
+async function downloadYouTubeViaOAuth(url: string, outputDir: string, oauthToken: string): Promise<string> {
+  const { spawn } = await import('child_process')
+  const id = uuidv4()
+  const outputPath = path.join(outputDir, `${id}.mp3`)
+
+  // Write the OAuth token to yt-dlp's cache directory so the plugin picks it up
+  const cacheDir = '/tmp/yt-dlp-oauth-cache'
+  const tokenDir = path.join(cacheDir, 'cache', 'youtube-oauth2')
+  await fs.mkdir(tokenDir, { recursive: true })
+  await fs.writeFile(path.join(tokenDir, 'default.json'), oauthToken)
+  console.log('[yt-dlp oauth] Token written, starting download...')
+
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn('yt-dlp', [
+      '--extract-audio',
+      '--audio-format', 'mp3',
+      '--audio-quality', '0',
+      '--no-playlist',
+      '--no-continue',
+      '--cache-dir', cacheDir,
+      '--username', 'oauth2',
+      '--password', '',
+      '-o', outputPath,
+      url,
+    ], { env: FFMPEG_ENV })
+
+    let stderrOutput = ''
+    proc.stderr.on('data', (d) => { stderrOutput += d.toString(); console.log('[yt-dlp oauth]', d.toString()) })
+    proc.stdout.on('data', (d) => console.log('[yt-dlp oauth out]', d.toString()))
+    proc.on('close', (code) => {
+      if (code === 0) return resolve()
+      reject(new Error(`yt-dlp oauth failed: ${stderrOutput.slice(-300)}`))
+    })
+    proc.on('error', (err) => reject(new Error(`yt-dlp not found: ${err.message}`)))
+  })
+
+  try {
+    const stat = await fs.stat(outputPath)
+    if (stat.size < 1000) throw new Error('Downloaded file too small')
+  } catch {
+    const files = await fs.readdir(outputDir)
+    const fallback = files.find((f) => f.startsWith(id))
+    if (fallback) return path.join(outputDir, fallback)
+    throw new Error('OAuth2 download failed — token may be expired, re-run local auth setup')
+  }
+
+  return outputPath
+}
+
 // Download YouTube audio via cobalt.tools API — avoids yt-dlp datacenter IP blocks
 async function downloadYouTubeViaCobalt(url: string, outputDir: string): Promise<string> {
   const id = uuidv4()
@@ -70,8 +120,13 @@ async function downloadYouTubeViaCobalt(url: string, outputDir: string): Promise
 }
 
 async function downloadAudio(url: string, outputDir: string): Promise<string> {
-  // Route YouTube URLs through cobalt.tools to avoid datacenter IP blocks
   if (isYouTubeUrl(url)) {
+    const oauthToken = process.env.YTDLP_OAUTH2_TOKEN
+    if (oauthToken) {
+      console.log('[download] YouTube URL — using OAuth2 token')
+      return downloadYouTubeViaOAuth(url, outputDir, oauthToken)
+    }
+    console.log('[download] YouTube URL — no OAuth token, falling back to cobalt.tools')
     return downloadYouTubeViaCobalt(url, outputDir)
   }
 
