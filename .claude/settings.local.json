@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Read(//Users/timschaible/.nvm/versions/**)",
+      "WebFetch(domain:docs.cartesia.ai)",
+      "WebSearch"
+    ]
+  }
+}
