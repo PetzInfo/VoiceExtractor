@@ -19,6 +19,18 @@ async function downloadAudio(url: string, outputDir: string): Promise<string> {
   // Use a fixed output path — yt-dlp will convert to mp3 and write exactly this file
   const outputPath = path.join(outputDir, `${id}.mp3`)
 
+  // Write YouTube cookies to a temp file if provided via environment variable
+  // Export cookies from Chrome using "Get cookies.txt LOCALLY" extension while logged into YouTube
+  const cookiesArgs: string[] = []
+  const cookiesContent = process.env.YOUTUBE_COOKIES
+  if (cookiesContent) {
+    const cookiesPath = path.join(outputDir, `${id}_cookies.txt`)
+    await fs.writeFile(cookiesPath, cookiesContent, 'utf8')
+    cookiesArgs.push('--cookies', cookiesPath)
+    // Register for cleanup (best-effort, ignore errors)
+    fs.unlink(cookiesPath).catch(() => {})
+  }
+
   await new Promise<void>((resolve, reject) => {
     const proc = spawn('yt-dlp', [
       '--extract-audio',
@@ -26,8 +38,8 @@ async function downloadAudio(url: string, outputDir: string): Promise<string> {
       '--audio-quality', '0',
       '--no-playlist',
       '--no-continue',
-      // Use iOS + TV embedded clients — bypasses YouTube's bot/login requirement on server IPs
       '--extractor-args', 'youtube:player_client=ios,tv_embedded,mweb',
+      ...cookiesArgs,
       '-o', outputPath,
       url,
     ], { env: FFMPEG_ENV })

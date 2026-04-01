@@ -225,16 +225,16 @@ export default function AudioTimeline({
               isPlaying ? audio.pause() : audio.play()
             }}
             disabled={!audioBase64 || loading}
-            className="w-7 h-7 rounded-full flex items-center justify-center transition-opacity disabled:opacity-30"
-            style={{ background: 'rgba(59,130,246,0.25)', border: '1px solid rgba(59,130,246,0.45)' }}
+            className="w-7 h-7 rounded-full flex items-center justify-center transition-all disabled:opacity-30 hover:scale-110"
+            style={{ background: 'rgba(59,130,246,0.7)', border: '1px solid rgba(99,160,255,0.9)', boxShadow: '0 0 8px rgba(59,130,246,0.5)' }}
             title={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? (
-              <svg className="w-3 h-3 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
               </svg>
             ) : (
-              <svg className="w-3 h-3 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z"/>
               </svg>
             )}
@@ -257,7 +257,7 @@ export default function AudioTimeline({
               style={{ background: 'rgba(59,130,246,0.25)', border: '1px solid rgba(59,130,246,0.45)' }}
               title="Download clip as MP3"
             >
-              <svg className="w-3 h-3 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
               </svg>
             </button>
