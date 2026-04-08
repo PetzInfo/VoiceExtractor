@@ -59,12 +59,6 @@ const PODCAST_DOMAINS = [
   'omny.fm',
   'megaphone.fm',
   'acast.com',
-  'audioboom.com',
-  'podcastone.com',
-  'pinecast.com',
-  'blubrry.com',
-  'anchor.fm',
-  'podcasts.google.com',
 ]
 
 const ALLOWED_DOMAINS = [...YTDLP_DOMAINS, ...PODCAST_DOMAINS]
@@ -100,19 +94,13 @@ export async function searchExecutiveMedia(name: string, title: string, companyU
 
   const anchor = companyName ? ` "${companyName}"` : ''
 
-  // Podcast hosting sites — split into two groups so Google handles the OR lists better
-  const podcastSitesA = 'site:buzzsprout.com OR site:libsyn.com OR site:simplecast.com OR site:acast.com OR site:omny.fm'
-  const podcastSitesB = 'site:megaphone.fm OR site:podigee.io OR site:audioboom.com OR site:spreaker.com OR site:podbean.com'
+  const podcastSites = 'site:buzzsprout.com OR site:libsyn.com OR site:simplecast.com OR site:acast.com OR site:omny.fm OR site:megaphone.fm OR site:podigee.io'
 
   const queries = [
-    // Podcast-first: native hosting platforms (two batches for better Google coverage)
-    `"${name}"${anchor} podcast (${podcastSitesA})`,
-    `"${name}"${anchor} podcast (${podcastSitesB})`,
-    // Broad podcast search — catches any hosting platform not in our explicit list
-    `"${name}"${anchor} podcast interview guest`,
-    // YouTube podcasts & interviews
-    `"${name}"${anchor} podcast interview site:youtube.com`,
-    `"${name}"${anchor} keynote OR talk OR speech site:youtube.com`,
+    `"${name}"${anchor} podcast interview site:youtube.com`,         // YouTube podcasts (best quality)
+    `"${name}"${anchor} podcast OR interview site:youtube.com`,      // broader YouTube search
+    `"${name}"${anchor} keynote OR talk OR speech site:youtube.com`, // keynotes / conference talks
+    `"${name}"${anchor} podcast episode (${podcastSites})`,          // native podcast hosting platforms
   ]
 
   const allResults: MediaResult[] = []
@@ -176,8 +164,8 @@ export async function searchExecutiveMedia(name: string, title: string, companyU
     })
   )
 
-  // Sort: podcasts first, then by how prominently the executive's name appears in the title
-  const TYPE_PRIORITY: Record<string, number> = { podcast: 0, keynote: 1, youtube: 2, other: 3 }
+  // Sort: YouTube first, then keynotes, podcasts last
+  const TYPE_PRIORITY: Record<string, number> = { youtube: 0, keynote: 1, podcast: 2, other: 3 }
   allResults.sort((a, b) => {
     const typeDiff = (TYPE_PRIORITY[a.type] ?? 3) - (TYPE_PRIORITY[b.type] ?? 3)
     if (typeDiff !== 0) return typeDiff

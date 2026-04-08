@@ -5,7 +5,8 @@
       "Read(//opt/homebrew/bin/**)",
       "Read(//Users/timschaible/.nvm/versions/**)",
       "WebFetch(domain:docs.cartesia.ai)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npm run:*)"
     ]
   }
 }
