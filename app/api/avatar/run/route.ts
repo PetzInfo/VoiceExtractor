@@ -119,11 +119,14 @@ async function runPipeline(
     await fs.writeFile(imagePath, imageBuffer)
     tmpFiles.push(imagePath)
 
-    // ── Step 1: Kling ──────────────────────────────────────────────────────
+    // ── Step 1: Kling (two clips in parallel → 20 s idle) ─────────────────
     updateJobStep(jobId, 0, 'running')
-    const klingPath = await generateKlingVideo(input.imageBase64, KLING_PROMPT, KLING_DURATION)
-    tmpFiles.push(klingPath)
-    setJobMedia(jobId, 'kling', await fs.readFile(klingPath), 'video/mp4')
+    const [klingPath1, klingPath2] = await Promise.all([
+      generateKlingVideo(input.imageBase64, KLING_PROMPT, KLING_DURATION),
+      generateKlingVideo(input.imageBase64, KLING_PROMPT, KLING_DURATION),
+    ])
+    tmpFiles.push(klingPath1, klingPath2)
+    setJobMedia(jobId, 'kling', await fs.readFile(klingPath1), 'video/mp4')
     updateJobStep(jobId, 0, 'done')
 
     // ── Step 2: Cartesia voice + TTS ───────────────────────────────────────
@@ -186,20 +189,26 @@ async function runPipeline(
     setJobMedia(jobId, 'heygen', await fs.readFile(heygenPath), 'video/mp4')
     updateJobStep(jobId, 2, 'done')
 
-    // ── Step 4: Merge ──────────────────────────────────────────────────────
+    // ── Step 4: Merge (kling1 + kling2 + heygen) ──────────────────────────
     updateJobStep(jobId, 3, 'running')
     const finalPath = `/tmp/${id}_final.mp4`
     tmpFiles.push(finalPath)
-    // Kling produces a silent video — synthesise a matching silence track before concat
-    const klingDuration = await getVideoDuration(klingPath)
+    // Both Kling clips are silent — synthesise silence for each
+    const [kling1Duration, kling2Duration] = await Promise.all([
+      getVideoDuration(klingPath1),
+      getVideoDuration(klingPath2),
+    ])
     await ffmpeg([
-      '-i', klingPath,
+      '-i', klingPath1,
+      '-i', klingPath2,
       '-i', heygenPath,
       '-filter_complex',
-        `aevalsrc=0:c=stereo:s=48000:d=${klingDuration}[a0];` +
+        `aevalsrc=0:c=stereo:s=48000:d=${kling1Duration}[a0];` +
+        `aevalsrc=0:c=stereo:s=48000:d=${kling2Duration}[a1];` +
         `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1[v0];` +
         `[1:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1[v1];` +
-        `[v0][a0][v1][1:a]concat=n=2:v=1:a=1[v][a]`,
+        `[2:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1[v2];` +
+        `[v0][a0][v1][a1][v2][2:a]concat=n=3:v=1:a=1[v][a]`,
       '-map', '[v]', '-map', '[a]', '-y', finalPath,
     ])
     updateJobStep(jobId, 3, 'done')
