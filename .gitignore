@@ -50,3 +50,6 @@ Thumbs.db
 
 # Temp files
 /tmp/*.mp3
+
+# Test scripts
+scripts/

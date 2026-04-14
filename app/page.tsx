@@ -6,6 +6,9 @@ import MediaSourcer, { MediaResult } from '@/components/MediaSourcer'
 import VoiceProcessor from '@/components/VoiceProcessor'
 import AudioTimeline from '@/components/AudioTimeline'
 import JSONOutput from '@/components/JSONOutput'
+import AvatarGeneration from '@/components/AvatarGeneration'
+
+type Tab = 'voice' | 'avatar'
 
 interface Executive {
   name: string
@@ -120,6 +123,7 @@ function StepBadge({ n, current }: { n: number; current: number }) {
 }
 
 export default function HomePage() {
+  const [activeTab, setActiveTab] = useState<Tab>('voice')
   const [currentStep, setCurrentStep] = useState(1)
   const [companyUrl, setCompanyUrl] = useState('')
   const [scraping, setScraping] = useState(false)
@@ -291,8 +295,9 @@ export default function HomePage() {
 
       {/* Header */}
       <header className="sticky top-0 z-40 border-b" style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border)' }}>
-        <div className="max-w-5xl mx-auto px-5 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-5xl mx-auto px-5 py-3.5 flex items-center justify-between gap-4">
+          {/* Logo */}
+          <div className="flex items-center gap-3 flex-shrink-0">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--accent-subtle, #151b42)', border: '1px solid #2e3a6e' }}>
               <svg className="w-4 h-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -304,7 +309,39 @@ export default function HomePage() {
               <p className="text-xs hidden sm:block" style={{ color: 'var(--text-3)' }}>Executive Voice ID Platform</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+
+          {/* Tabs */}
+          <div className="flex items-center gap-1 flex-1 justify-center">
+            <button
+              onClick={() => setActiveTab('voice')}
+              className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              style={activeTab === 'voice'
+                ? { background: 'var(--accent-subtle, #151b42)', border: '1px solid #2e3a6e', color: 'var(--accent)' }
+                : { background: 'transparent', border: '1px solid transparent', color: 'var(--text-3)' }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+              Voice Extraction
+            </button>
+            <button
+              onClick={() => setActiveTab('avatar')}
+              className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              style={activeTab === 'avatar'
+                ? { background: 'var(--accent-subtle, #151b42)', border: '1px solid #2e3a6e', color: 'var(--accent)' }
+                : { background: 'transparent', border: '1px solid transparent', color: 'var(--text-3)' }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Avatar Generation
+            </button>
+          </div>
+
+          {/* Status */}
+          <div className="flex items-center gap-3 flex-shrink-0">
             <span className="text-xs hidden sm:block" style={{ color: 'var(--text-3)' }}>Security Awareness Training</span>
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
               style={{ background: '#0d2318', border: '1px solid #14532d', color: '#4ade80' }}>
@@ -315,7 +352,9 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-5 py-10">
+      {activeTab === 'avatar' && <AvatarGeneration />}
+
+      <main className="max-w-5xl mx-auto px-5 py-10" style={activeTab !== 'voice' ? { display: 'none' } : {}}>
         {/* Hero */}
         <div className="text-center mb-12">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium mb-5"
