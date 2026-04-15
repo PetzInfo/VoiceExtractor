@@ -74,7 +74,12 @@ export async function POST(req: Request) {
       throw new Error(`Bey submit failed (${submitRes.status}): ${await submitRes.text()}`)
     }
 
-    return NextResponse.json({ avatarId })
+    // 5. Confirm status is "training"
+    const statusRes = await fetch(`${BASE_URL}/avatars/${avatarId}`, { headers: beyHeaders() })
+    const statusData = statusRes.ok ? await statusRes.json() as { status?: string } : {}
+    const beyStatus = statusData.status ?? 'training'
+
+    return NextResponse.json({ avatarId, status: beyStatus })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[bey-create]', message)
