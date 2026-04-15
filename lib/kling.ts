@@ -7,7 +7,15 @@ import { v4 as uuidv4 } from 'uuid'
 
 const BASE_URL = 'https://api-singapore.klingai.com/v1'
 const POLL_INTERVAL_MS = 5_000
-const TIMEOUT_MS = 300_000
+const TIMEOUT_MS = 1_200_000 // 20 minutes — Kling typically takes 3–10 min
+const POLL_RETRY_LIMIT = 3
+const POLL_RETRY_DELAY_MS = 3_000
+
+const NEGATIVE_PROMPT =
+  'zoom in, zoom out, camera zoom, dolly in, dolly out, push in, pull back, ' +
+  'camera movement, camera motion, camera pan, pan left, pan right, ' +
+  'camera tilt, tilt up, tilt down, camera shake, handheld camera, ' +
+  'moving camera, tracking shot, crane shot, any camera motion'
 
 function getToken(accessKey: string, secretKey: string): string {
   const now = Math.floor(Date.now() / 1000)
@@ -40,7 +48,7 @@ export async function generateKlingVideo(
   const resp = await fetch(`${BASE_URL}/videos/image2video`, {
     method: 'POST',
     headers: authHeaders(accessKey, secretKey),
-    body: JSON.stringify({ model: 'kling-v3', image: rawBase64, prompt, duration, mode: 'std' }),
+    body: JSON.stringify({ model: 'kling-v3', image: rawBase64, prompt, negative_prompt: NEGATIVE_PROMPT, duration, mode: 'std' }),
   })
   if (!resp.ok) throw new Error(`Kling API error ${resp.status}: ${await resp.text()}`)
   const data = await resp.json()
@@ -51,20 +59,34 @@ export async function generateKlingVideo(
 
 async function pollAndDownload(accessKey: string, secretKey: string, taskId: string): Promise<string> {
   const deadline = Date.now() + TIMEOUT_MS
-  while (Date.now() < deadline) {
-    const resp = await fetch(`${BASE_URL}/videos/image2video/${taskId}`, {
-      headers: authHeaders(accessKey, secretKey),
-    })
-    if (!resp.ok) throw new Error(`Kling poll error ${resp.status}: ${await resp.text()}`)
-    const body = await resp.json()
-    const status: string = body.data.task_status
+  let consecutiveErrors = 0
 
-    if (status === 'succeed') {
-      const videoUrl: string = body.data.task_result.videos[0].url
-      return downloadToTmp(videoUrl, `${uuidv4()}_kling.mp4`)
-    }
-    if (status === 'failed') {
-      throw new Error(`Kling task failed: ${body.data.task_status_msg ?? 'unknown'}`)
+  while (Date.now() < deadline) {
+    try {
+      const resp = await fetch(`${BASE_URL}/videos/image2video/${taskId}`, {
+        headers: authHeaders(accessKey, secretKey),
+      })
+      if (!resp.ok) throw new Error(`Kling poll error ${resp.status}: ${await resp.text()}`)
+      const body = await resp.json()
+      const status: string = body.data.task_status
+
+      consecutiveErrors = 0 // reset on any successful poll
+
+      if (status === 'succeed') {
+        const videoUrl: string = body.data.task_result.videos[0].url
+        return downloadToTmp(videoUrl, `${uuidv4()}_kling.mp4`)
+      }
+      if (status === 'failed') {
+        throw new Error(`Kling task failed: ${body.data.task_status_msg ?? 'unknown'}`)
+      }
+    } catch (err) {
+      // Re-throw immediately for Kling-reported failures (not transient network errors)
+      if (err instanceof Error && err.message.startsWith('Kling task failed')) throw err
+
+      consecutiveErrors++
+      if (consecutiveErrors >= POLL_RETRY_LIMIT) throw err
+      await new Promise((r) => setTimeout(r, POLL_RETRY_DELAY_MS))
+      continue
     }
 
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
