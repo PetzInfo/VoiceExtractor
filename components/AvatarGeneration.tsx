@@ -702,12 +702,12 @@ export default function AvatarGeneration() {
                   <svg className="w-4 h-4 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className="text-sm font-semibold text-green-400">Avatar training submitted</span>
+                  <span className="text-sm font-semibold text-green-400">Avatar training in progress</span>
                 </div>
                 <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Avatar ID</p>
                 <p className="text-xs font-mono text-white break-all">{beyAvatarId}</p>
                 <p className="text-xs mt-2" style={{ color: 'var(--text-3)' }}>
-                  The avatar will be ready in ~5–6 hours.
+                  Training has begun and takes approximately 5–6 hours. You will be notified once the avatar is ready.
                 </p>
               </div>
             )}
