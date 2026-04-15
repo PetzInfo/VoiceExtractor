@@ -81,6 +81,12 @@ export default function AvatarGeneration() {
   const [heygenVideo, setHeygenVideo] = useState<string | null>(null)
   const [finalVideo, setFinalVideo] = useState<string | null>(null)
 
+  // Beyond Presence avatar creation
+  type BeyState = 'idle' | 'uploading' | 'done' | 'error'
+  const [beyState, setBeyState] = useState<BeyState>('idle')
+  const [beyAvatarId, setBeyAvatarId] = useState<string | null>(null)
+  const [beyError, setBeyError] = useState<string | null>(null)
+
   const STORAGE_KEY = 'avatar_job_id'
 
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -235,6 +241,28 @@ export default function AvatarGeneration() {
     return stopPolling
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ── Beyond Presence upload ────────────────────────────────────────────────
+
+  async function handleCreateBeyAvatar() {
+    if (!activeJobId || !avatarName) return
+    setBeyState('uploading')
+    setBeyError(null)
+    try {
+      const res = await fetch('/api/avatar/bey-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: activeJobId, avatarName }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Upload failed')
+      setBeyAvatarId(data.avatarId)
+      setBeyState('done')
+    } catch (err) {
+      setBeyError(err instanceof Error ? err.message : 'Unexpected error')
+      setBeyState('error')
+    }
+  }
 
   // ── Pipeline start ────────────────────────────────────────────────────────
 
@@ -610,16 +638,17 @@ export default function AvatarGeneration() {
       {/* Final video output */}
       {finalVideo && (
         <Card>
+          {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span className="text-sm font-semibold text-white">Avatar Generated</span>
+              <span className="text-sm font-semibold text-white">Training Video Ready</span>
             </div>
             <a
               href={finalVideo}
-              download={`${avatarName.replace(/\s+/g, '_')}_avatar.mp4`}
+              download={`${avatarName.replace(/\s+/g, '_')}_training.mp4`}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all"
               style={{ background: 'var(--accent)' }}
             >
@@ -629,12 +658,76 @@ export default function AvatarGeneration() {
               Download
             </a>
           </div>
+
           <video
             src={finalVideo}
             controls
-            className="w-full rounded-lg"
+            className="w-full rounded-lg mb-6"
             style={{ maxHeight: '480px' }}
           />
+
+          {/* Beyond Presence avatar creation */}
+          <div className="pt-5" style={{ borderTop: '1px solid var(--border)' }}>
+            <p className="text-xs mb-4" style={{ color: 'var(--text-3)' }}>
+              Use this video to train a Beyond Presence avatar. Training takes approximately 5–6 hours.
+            </p>
+
+            {beyState === 'idle' && (
+              <button
+                onClick={handleCreateBeyAvatar}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white transition-all"
+                style={{ background: 'var(--accent)' }}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                Create Beyond Presence Avatar
+              </button>
+            )}
+
+            {beyState === 'uploading' && (
+              <div className="flex items-center gap-3">
+                <svg className="animate-spin w-4 h-4 flex-shrink-0" style={{ color: 'var(--accent)' }} fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span className="text-sm text-white">Uploading training video to Beyond Presence…</span>
+              </div>
+            )}
+
+            {beyState === 'done' && beyAvatarId && (
+              <div className="rounded-lg px-4 py-3" style={{ background: 'var(--bg-hover)', border: '1px solid #14532d' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <svg className="w-4 h-4 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-sm font-semibold text-green-400">Avatar training submitted</span>
+                </div>
+                <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Avatar ID</p>
+                <p className="text-xs font-mono text-white break-all">{beyAvatarId}</p>
+                <p className="text-xs mt-2" style={{ color: 'var(--text-3)' }}>
+                  The avatar will be ready in ~5–6 hours.
+                </p>
+              </div>
+            )}
+
+            {beyState === 'error' && (
+              <div>
+                <div className="rounded-lg px-4 py-3 mb-3" style={{ background: '#1a0a0a', border: '1px solid #7f1d1d' }}>
+                  <p className="text-xs font-medium text-red-300">Upload failed</p>
+                  <p className="text-xs text-red-400 mt-0.5">{beyError}</p>
+                </div>
+                <button
+                  onClick={handleCreateBeyAvatar}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white transition-all"
+                  style={{ background: 'var(--accent)' }}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+          </div>
         </Card>
       )}
 
