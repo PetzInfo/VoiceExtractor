@@ -3,7 +3,7 @@ import { getJobMedia, MediaType } from '@/lib/avatar-jobs'
 
 export const runtime = 'nodejs'
 
-const VALID_TYPES: MediaType[] = ['kling', 'tts', 'heygen', 'final']
+const VALID_TYPES: MediaType[] = ['idle', 'tts', 'heygen', 'final']
 
 export async function GET(
   _req: Request,

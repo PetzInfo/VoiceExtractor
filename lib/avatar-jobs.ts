@@ -4,7 +4,7 @@
  * Jobs are cleaned up after JOB_TTL_MS to prevent unbounded memory growth.
  */
 
-export type MediaType = 'kling' | 'tts' | 'heygen' | 'final'
+export type MediaType = 'idle' | 'tts' | 'heygen' | 'final'
 
 export interface JobStep {
   label: string
@@ -30,7 +30,7 @@ export function createJob(id: string): AvatarJob {
     id,
     createdAt: Date.now(),
     steps: [
-      { label: 'Generating motion video', status: 'idle' },
+      { label: 'Generating idle video', status: 'idle' },
       { label: 'Preparing voice', status: 'idle' },
       { label: 'Generating talking-head video', status: 'idle' },
       { label: 'Merging final video', status: 'idle' },

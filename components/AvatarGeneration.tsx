@@ -12,7 +12,7 @@ interface StepState {
 }
 
 const INITIAL_STEPS: StepState[] = [
-  { label: 'Generating motion video', status: 'idle' },
+  { label: 'Generating idle video', status: 'idle' },
   { label: 'Preparing voice', status: 'idle' },
   { label: 'Generating talking-head video', status: 'idle' },
   { label: 'Merging final video', status: 'idle' },
@@ -73,10 +73,10 @@ export default function AvatarGeneration() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // Tracks which media types have already been fetched (ref = no re-render on update)
-  const fetchedMedia = useRef({ kling: false, tts: false, heygen: false, final: false })
+  const fetchedMedia = useRef({ idle: false, tts: false, heygen: false, final: false })
 
   // Interim + final media
-  const [klingVideo, setKlingVideo] = useState<string | null>(null)
+  const [idleVideo, setIdleVideo] = useState<string | null>(null)
   const [ttsAudio, setTtsAudio] = useState<string | null>(null)
   const [heygenVideo, setHeygenVideo] = useState<string | null>(null)
   const [finalVideo, setFinalVideo] = useState<string | null>(null)
@@ -174,7 +174,7 @@ export default function AvatarGeneration() {
     }
   }, [])
 
-  const fetchMedia = useCallback(async (jobId: string, type: 'kling' | 'tts' | 'heygen' | 'final') => {
+  const fetchMedia = useCallback(async (jobId: string, type: 'idle' | 'tts' | 'heygen' | 'final') => {
     if (fetchedMedia.current[type]) return
     fetchedMedia.current[type] = true
     try {
@@ -182,7 +182,7 @@ export default function AvatarGeneration() {
       if (!res.ok) return
       const { data, mimeType } = await res.json()
       const src = `data:${mimeType};base64,${data}`
-      if (type === 'kling')   setKlingVideo(src)
+      if (type === 'idle')    setIdleVideo(src)
       if (type === 'tts')     setTtsAudio(src)
       if (type === 'heygen')  setHeygenVideo(src)
       if (type === 'final')   setFinalVideo(src)
@@ -207,7 +207,7 @@ export default function AvatarGeneration() {
         setSteps(job.steps)
 
         // Fetch each media type exactly once when its flag flips
-        if (job.hasKlingVideo)  fetchMedia(jobId, 'kling')
+        if (job.hasIdleVideo)   fetchMedia(jobId, 'idle')
         if (job.hasTtsAudio)    fetchMedia(jobId, 'tts')
         if (job.hasHeygenVideo) fetchMedia(jobId, 'heygen')
         if (job.hasFinalVideo)  fetchMedia(jobId, 'final')
@@ -270,12 +270,12 @@ export default function AvatarGeneration() {
     if (!canGenerate || !imageBase64) return
     setGenerating(true)
     setPipelineError(null)
-    setKlingVideo(null)
+    setIdleVideo(null)
     setTtsAudio(null)
     setHeygenVideo(null)
     setFinalVideo(null)
     setSteps(INITIAL_STEPS)
-    fetchedMedia.current = { kling: false, tts: false, heygen: false, final: false }
+    fetchedMedia.current = { idle: false, tts: false, heygen: false, final: false }
 
     try {
       const body: Record<string, string> = { avatarName, imageBase64, language }
@@ -604,10 +604,10 @@ export default function AvatarGeneration() {
                 </div>
 
                 {/* Inline media previews */}
-                {i === 0 && klingVideo && (
+                {i === 0 && idleVideo && (
                   <div className="ml-10 mt-2">
-                    <p className="text-xs mb-1.5" style={{ color: 'var(--text-3)' }}>Motion video</p>
-                    <video src={klingVideo} controls muted className="rounded-lg w-full" style={{ maxHeight: '180px' }} />
+                    <p className="text-xs mb-1.5" style={{ color: 'var(--text-3)' }}>Idle video</p>
+                    <video src={idleVideo} controls muted className="rounded-lg w-full" style={{ maxHeight: '180px' }} />
                   </div>
                 )}
                 {i === 1 && ttsAudio && (

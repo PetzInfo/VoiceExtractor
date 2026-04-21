@@ -5,19 +5,13 @@ import { v4 as uuidv4 } from 'uuid'
 import axios from 'axios'
 import FormData from 'form-data'
 import { base64ToBuffer, cleanupTmpFiles } from '@/lib/audio-utils'
-import { generateKlingVideo } from '@/lib/kling'
-import { generateHeyGenVideo } from '@/lib/heygen'
+import { generateHeyGenIdleVideo, generateHeyGenVideo } from '@/lib/heygen'
 import { createJob, updateJobStep, setJobMedia, completeJob, failJob } from '@/lib/avatar-jobs'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // Only needs to cover job creation, not the pipeline itself
 
-// ── Hardcoded pipeline constants (from Pipeline.py defaults) ──────────────────
-
-const KLING_PROMPT =
-  'A realistic man looks directly into the camera, completely silent and almost perfectly still. His head is fully fixed in place, as if physically stabilized — no movement, no nodding, no tilting, no micro-movements of the head or neck at all. His mouth remains fully closed at all times, with no lip or jaw movement under any circumstances. His expression is neutral, calm, and steady. Eye contact is fixed and unwavering. Breathing is extremely subtle and barely perceptible, with only minimal chest movement — almost imperceptible. His body remains stable and grounded, with no posture shifts or gestures. No facial acting, no emotional reactions, no expressive behavior. The overall impression is a silent, highly controlled human presence, similar to a frozen moment or stabilized live frame. Static camera, medium close-up, warm ambient lighting, ultra-realistic human appearance. The camera is static like a webcam, do not zoom in.'
-
-const KLING_DURATION = 10
+// ── Hardcoded pipeline constants ──────────────────────────────────────────────
 
 const DEFAULT_SCRIPT = `Hey, how's it going. I am a Voice Clone, and I'd like to tell you about a company that really impressed me. They're called revel8, a cybersecurity startup based in Munich, Germany.
         So here's the thing. Every organization today faces the same challenge. You can invest millions in firewalls, endpoint protection, and all the technical security you want. But at the end of the day, the biggest vulnerability is always the human element. Attackers know this, and they're getting incredibly good at exploiting it.
@@ -50,27 +44,6 @@ function ffmpeg(args: string[]): Promise<void> {
       else reject(new Error(`ffmpeg exited ${code}: ${Buffer.concat(stderr).toString().slice(-500)}`))
     })
     proc.on('error', (e) => reject(new Error(`ffmpeg spawn failed: ${e.message}`)))
-  })
-}
-
-/** Returns video duration in seconds via ffprobe. */
-function getVideoDuration(filePath: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn('ffprobe', [
-      '-v', 'error',
-      '-show_entries', 'format=duration',
-      '-of', 'default=noprint_wrappers=1:nokey=1',
-      filePath,
-    ], { env: FFMPEG_ENV })
-    const out: Buffer[] = []
-    proc.stdout?.on('data', (c: Buffer) => out.push(c))
-    proc.on('close', (code) => {
-      if (code !== 0) return reject(new Error(`ffprobe exited ${code}`))
-      const dur = parseFloat(Buffer.concat(out).toString().trim())
-      if (isNaN(dur)) return reject(new Error('ffprobe returned non-numeric duration'))
-      resolve(dur)
-    })
-    proc.on('error', (e) => reject(new Error(`ffprobe not found: ${e.message}`)))
   })
 }
 
@@ -119,14 +92,12 @@ async function runPipeline(
     await fs.writeFile(imagePath, imageBuffer)
     tmpFiles.push(imagePath)
 
-    // ── Step 1: Kling (two clips in parallel → 20 s idle) ─────────────────
+    // ── Step 1: HeyGen idle video (image + 20 s silence) ──────────────────
     updateJobStep(jobId, 0, 'running')
-    const [klingPath1, klingPath2] = await Promise.all([
-      generateKlingVideo(input.imageBase64, KLING_PROMPT, KLING_DURATION),
-      generateKlingVideo(input.imageBase64, KLING_PROMPT, KLING_DURATION),
-    ])
-    tmpFiles.push(klingPath1, klingPath2)
-    setJobMedia(jobId, 'kling', await fs.readFile(klingPath1), 'video/mp4')
+    const idlePath = `/tmp/${id}_idle.mp4`
+    tmpFiles.push(idlePath)
+    await generateHeyGenIdleVideo(imageBuffer, imageMime, idlePath)
+    setJobMedia(jobId, 'idle', await fs.readFile(idlePath), 'video/mp4')
     updateJobStep(jobId, 0, 'done')
 
     // ── Step 2: Cartesia voice + TTS ───────────────────────────────────────
@@ -189,26 +160,15 @@ async function runPipeline(
     setJobMedia(jobId, 'heygen', await fs.readFile(heygenPath), 'video/mp4')
     updateJobStep(jobId, 2, 'done')
 
-    // ── Step 4: Merge (kling1 + kling2 + heygen) ──────────────────────────
+    // ── Step 4: Merge (idle + heygen) ─────────────────────────────────────
     updateJobStep(jobId, 3, 'running')
     const finalPath = `/tmp/${id}_final.mp4`
     tmpFiles.push(finalPath)
-    // Both Kling clips are silent — synthesise silence for each
-    const [kling1Duration, kling2Duration] = await Promise.all([
-      getVideoDuration(klingPath1),
-      getVideoDuration(klingPath2),
-    ])
+    // Both clips are 720p 16:9 from HeyGen — simple concat, no scaling needed
     await ffmpeg([
-      '-i', klingPath1,
-      '-i', klingPath2,
+      '-i', idlePath,
       '-i', heygenPath,
-      '-filter_complex',
-        `aevalsrc=0:c=stereo:s=48000:d=${kling1Duration}[a0];` +
-        `aevalsrc=0:c=stereo:s=48000:d=${kling2Duration}[a1];` +
-        `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1[v0];` +
-        `[1:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1[v1];` +
-        `[2:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1[v2];` +
-        `[v0][a0][v1][a1][v2][2:a]concat=n=3:v=1:a=1[v][a]`,
+      '-filter_complex', '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]',
       '-map', '[v]', '-map', '[a]', '-y', finalPath,
     ])
     updateJobStep(jobId, 3, 'done')

@@ -1,14 +1,87 @@
 import { createWriteStream } from 'fs'
+import * as fs from 'fs/promises'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
+import { spawn } from 'child_process'
+import * as os from 'os'
+import * as path from 'path'
+import { v4 as uuidv4 } from 'uuid'
 
 const BASE_URL = 'https://api.heygen.com'
 const UPLOAD_URL = 'https://upload.heygen.com/v1/asset'
 const POLL_INTERVAL_MS = 10_000
 const TIMEOUT_MS = 600_000
 
+const FFMPEG_ENV = {
+  ...process.env,
+  PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH ?? ''}`,
+}
+
 function headers(apiKey: string): Record<string, string> {
   return { 'X-Api-Key': apiKey }
+}
+
+/** Generates 20 s of silence as an MP3 buffer using ffmpeg. */
+async function generateSilenceMp3(): Promise<Buffer> {
+  const dest = path.join(os.tmpdir(), `${uuidv4()}_silence.mp3`)
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn('ffmpeg', [
+      '-f', 'lavfi',
+      '-i', 'anullsrc=r=44100:cl=stereo',
+      '-t', '20',
+      '-acodec', 'libmp3lame',
+      '-y', dest,
+    ], { env: FFMPEG_ENV })
+    const stderr: Buffer[] = []
+    proc.stderr?.on('data', (d: Buffer) => stderr.push(d))
+    proc.on('close', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(`ffmpeg silence gen failed (${code}): ${Buffer.concat(stderr).toString().slice(-300)}`))
+    })
+    proc.on('error', (e) => reject(new Error(`ffmpeg spawn failed: ${e.message}`)))
+  })
+  const buf = await fs.readFile(dest)
+  await fs.unlink(dest).catch(() => {})
+  return buf
+}
+
+/**
+ * Generates a 20-second idle video from a portrait image using HeyGen's
+ * /v3/videos endpoint (type: "image") with a silent audio track.
+ * Produces a still-looking 16:9 720p clip with matching aspect ratio.
+ */
+export async function generateHeyGenIdleVideo(
+  imageBuffer: Buffer,
+  imageMime: string,
+  outputPath: string
+): Promise<string> {
+  const apiKey = process.env.HEYGEN_API_KEY
+  if (!apiKey) throw new Error('HEYGEN_API_KEY not configured')
+
+  const [imageAssetId, silenceBuffer] = await Promise.all([
+    uploadAsset(apiKey, imageBuffer, imageMime),
+    generateSilenceMp3(),
+  ])
+  const silenceAssetId = await uploadAsset(apiKey, silenceBuffer, 'audio/mpeg')
+
+  const resp = await fetch(`${BASE_URL}/v3/videos`, {
+    method: 'POST',
+    headers: { ...headers(apiKey), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'image',
+      image: { type: 'asset_id', asset_id: imageAssetId },
+      audio_asset_id: silenceAssetId,
+      resolution: '720p',
+      aspect_ratio: '16:9',
+      expressiveness: 'low',
+    }),
+  })
+  if (!resp.ok) throw new Error(`HeyGen idle generate error ${resp.status}: ${await resp.text()}`)
+  const body = await resp.json()
+  const videoId: string = body.data?.video_id
+  if (!videoId) throw new Error(`HeyGen did not return a video_id: ${JSON.stringify(body)}`)
+
+  return pollAndDownload(apiKey, videoId, outputPath)
 }
 
 async function uploadAsset(apiKey: string, buffer: Buffer, mimeType: string): Promise<string> {
