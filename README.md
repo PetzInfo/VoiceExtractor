@@ -19,11 +19,11 @@ Internal tool for security awareness training. Two capabilities: (1) automatical
 ### Avatar Generation (Image-to-Avatar)
 
 1. Upload a landscape portrait image and provide a voice (Cartesia Voice ID or ~5s audio sample)
-2. Kling AI generates a short motion video from the still image
+2. HeyGen generates a short idle video from the still image (20 s silence)
 3. Cartesia clones the voice (or uses the provided ID) and synthesises TTS audio
 4. HeyGen creates a talking-head video with lip-synced audio
-5. ffmpeg merges the clips into a final composite video
-6. (Optional) Upload to Beyond Presence to train a live interactive avatar
+5. ffmpeg merges idle + talking-head into a final composite video
+6. (Optional) Create a Beyond Presence avatar — uploads the video, starts training (~5–6 hours), and records the avatar in the backend
 
 ---
 
@@ -75,8 +75,7 @@ Open [http://localhost:3000](http://localhost:3000) and log in with the password
 | `SERPER_API_KEY` | Google search (LinkedIn, photos, media) | serper.dev |
 | `ASSEMBLYAI_API_KEY` | Speaker diarization (who is the exec?) | assemblyai.com |
 | `CARTESIA_API_KEY` | Voice cloning + TTS | play.cartesia.ai |
-| `KLING_ACCESS_KEY` / `KLING_SECRET_KEY` | Motion video generation (avatar pipeline) | klingai.com |
-| `HEYGEN_API_KEY` | Talking-head video generation (avatar pipeline) | heygen.com |
+| `HEYGEN_API_KEY` | Idle video + talking-head video generation (avatar pipeline) | heygen.com |
 | `BEY_API_KEY` | Beyond Presence avatar training (optional) | beyondpresence.ai |
 
 Copy `.env.local.example` to `.env.local` and fill in each value. Keys marked "avatar pipeline" are only required for the Avatar Generation feature.
@@ -95,8 +94,8 @@ Copy `.env.local.example` to `.env.local` and fill in each value. Keys marked "a
    - **Audio file** (~5s of clean speech, MP3/WAV/M4A/OGG) — to clone a new voice on the fly
 5. Select a **language** (German, English, French, Spanish, Italian, Portuguese)
 6. Click **Generate Avatar** — pipeline takes ~10–15 minutes
-7. Preview the output of each step (motion video, TTS audio, talking-head video, final composite)
-8. (Optional) Click **Upload to Beyond Presence** to start avatar training (~5–6 hours)
+7. Preview the output of each step (idle video, TTS audio, talking-head video, final composite)
+8. (Optional) Click **Create Beyond Presence Avatar** — uploads the video, starts training (~5–6 hours), and displays the avatar ID for reference
 
 ---
 
@@ -133,6 +132,6 @@ Once happy with the clip, click **Push to Cartesia**. The voice is cloned and a 
 ### Avatar Generation
 - Portrait image must be **landscape orientation** (wider than tall)
 - Audio sample for voice cloning should be ~5 seconds of clean, uninterrupted speech
-- The pipeline runs sequentially: Kling → Cartesia → HeyGen → merge. Total time ~10–15 minutes
+- The pipeline runs sequentially: HeyGen idle → Cartesia → HeyGen talking-head → merge. Total time ~10–15 minutes
 - Job state is held in memory with a 2-hour TTL — refresh the page within that window to retrieve results
 - Beyond Presence training is asynchronous; the avatar will not be live until training completes (~5–6 hours)
