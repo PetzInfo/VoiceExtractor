@@ -4,6 +4,8 @@
  * Jobs are cleaned up after JOB_TTL_MS to prevent unbounded memory growth.
  */
 
+import { unlink } from 'fs/promises'
+
 export type MediaType = 'idle' | 'tts' | 'heygen' | 'final'
 
 export interface JobStep {
@@ -17,13 +19,19 @@ export interface AvatarJob {
   steps: JobStep[]
   status: 'running' | 'done' | 'error'
   error?: string
-  // Interim + final media — stored as Buffer, served on demand
-  media: Partial<Record<MediaType, { buffer: Buffer; mimeType: string }>>
+  // Media stored as file paths on disk — buffers are never held in memory long-term
+  media: Partial<Record<MediaType, { filePath: string; mimeType: string }>>
 }
 
 const JOB_TTL_MS = 2 * 60 * 60 * 1000 // 2 hours
 
 const jobs = new Map<string, AvatarJob>()
+
+function deleteJobFiles(job: AvatarJob) {
+  for (const m of Object.values(job.media)) {
+    unlink(m.filePath).catch(() => {})
+  }
+}
 
 export function createJob(id: string): AvatarJob {
   const job: AvatarJob = {
@@ -39,7 +47,11 @@ export function createJob(id: string): AvatarJob {
     media: {},
   }
   jobs.set(id, job)
-  setTimeout(() => jobs.delete(id), JOB_TTL_MS)
+  setTimeout(() => {
+    const j = jobs.get(id)
+    if (j) deleteJobFiles(j)
+    jobs.delete(id)
+  }, JOB_TTL_MS)
   return job
 }
 
@@ -53,13 +65,13 @@ export function updateJobStep(id: string, stepIndex: number, status: JobStep['st
   job.steps[stepIndex] = { ...job.steps[stepIndex], status }
 }
 
-export function setJobMedia(id: string, type: MediaType, buffer: Buffer, mimeType: string): void {
+export function setJobMedia(id: string, type: MediaType, filePath: string, mimeType: string): void {
   const job = jobs.get(id)
   if (!job) return
-  job.media[type] = { buffer, mimeType }
+  job.media[type] = { filePath, mimeType }
 }
 
-export function getJobMedia(id: string, type: MediaType): { buffer: Buffer; mimeType: string } | undefined {
+export function getJobMedia(id: string, type: MediaType): { filePath: string; mimeType: string } | undefined {
   return jobs.get(id)?.media[type]
 }
 
@@ -77,4 +89,5 @@ export function failJob(id: string, error: string): void {
   for (const step of job.steps) {
     if (step.status === 'running') step.status = 'error'
   }
+  deleteJobFiles(job)
 }

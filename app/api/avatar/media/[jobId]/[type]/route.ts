@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import * as fs from 'fs/promises'
 import { getJobMedia, MediaType } from '@/lib/avatar-jobs'
 
 export const runtime = 'nodejs'
@@ -20,8 +21,9 @@ export async function GET(
     return NextResponse.json({ error: 'Media not ready or job not found' }, { status: 404 })
   }
 
+  const buffer = await fs.readFile(media.filePath)
   return NextResponse.json({
-    data: media.buffer.toString('base64'),
+    data: buffer.toString('base64'),
     mimeType: media.mimeType,
   })
 }

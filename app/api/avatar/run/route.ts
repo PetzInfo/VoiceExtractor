@@ -95,9 +95,8 @@ async function runPipeline(
     // ── Step 1: HeyGen idle video (image + 20 s silence) ──────────────────
     updateJobStep(jobId, 0, 'running')
     const idlePath = `/tmp/${id}_idle.mp4`
-    tmpFiles.push(idlePath)
     await generateHeyGenIdleVideo(imageBuffer, imageMime, idlePath)
-    setJobMedia(jobId, 'idle', await fs.readFile(idlePath), 'video/mp4')
+    setJobMedia(jobId, 'idle', idlePath, 'video/mp4')
     updateJobStep(jobId, 0, 'done')
 
     // ── Step 2: Cartesia voice + TTS ───────────────────────────────────────
@@ -127,7 +126,6 @@ async function runPipeline(
     }
 
     const ttsPath = `/tmp/${id}_tts.mp3`
-    tmpFiles.push(ttsPath)
     const cartesiaKey = process.env.CARTESIA_API_KEY
     if (!cartesiaKey) throw new Error('CARTESIA_API_KEY not configured')
 
@@ -146,24 +144,21 @@ async function runPipeline(
         timeout: 120_000,
       }
     )
-    const ttsBuffer2 = Buffer.from(ttsRes.data)
-    await fs.writeFile(ttsPath, ttsBuffer2)
-    setJobMedia(jobId, 'tts', ttsBuffer2, 'audio/mpeg')
+    await fs.writeFile(ttsPath, Buffer.from(ttsRes.data))
+    setJobMedia(jobId, 'tts', ttsPath, 'audio/mpeg')
     updateJobStep(jobId, 1, 'done')
 
     // ── Step 3: HeyGen ─────────────────────────────────────────────────────
     updateJobStep(jobId, 2, 'running')
     const heygenPath = `/tmp/${id}_heygen.mp4`
-    tmpFiles.push(heygenPath)
     const ttsBuffer = await fs.readFile(ttsPath)
     await generateHeyGenVideo(imageBuffer, imageMime, ttsBuffer, heygenPath)
-    setJobMedia(jobId, 'heygen', await fs.readFile(heygenPath), 'video/mp4')
+    setJobMedia(jobId, 'heygen', heygenPath, 'video/mp4')
     updateJobStep(jobId, 2, 'done')
 
     // ── Step 4: Merge (idle + heygen) ─────────────────────────────────────
     updateJobStep(jobId, 3, 'running')
     const finalPath = `/tmp/${id}_final.mp4`
-    tmpFiles.push(finalPath)
     // Both clips are 720p 16:9 from HeyGen — simple concat, no scaling needed
     await ffmpeg([
       '-i', idlePath,
@@ -173,7 +168,7 @@ async function runPipeline(
     ])
     updateJobStep(jobId, 3, 'done')
 
-    setJobMedia(jobId, 'final', await fs.readFile(finalPath), 'video/mp4')
+    setJobMedia(jobId, 'final', finalPath, 'video/mp4')
     completeJob(jobId)
   } catch (err) {
     failJob(jobId, err instanceof Error ? err.message : String(err))
