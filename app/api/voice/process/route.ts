@@ -13,11 +13,45 @@ const FFMPEG_ENV = {
   PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH ?? ''}`,
 }
 
+function isYouTubeUrl(url: string): boolean {
+  return /youtube\.com|youtu\.be/.test(url)
+}
+
+async function downloadFromCobalt(url: string, outputPath: string): Promise<void> {
+  const res = await fetch('https://api.cobalt.tools/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ url, downloadMode: 'audio', audioFormat: 'mp3' }),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Cobalt API error ${res.status}: ${text.slice(0, 200)}`)
+  }
+
+  const data = await res.json()
+  if (data.status === 'error') throw new Error(`Cobalt error: ${data.error?.code ?? 'unknown'}`)
+
+  const downloadUrl = data.url
+  if (!downloadUrl) throw new Error('Cobalt returned no download URL')
+
+  const audioRes = await fetch(downloadUrl)
+  if (!audioRes.ok) throw new Error(`Failed to fetch audio from Cobalt: ${audioRes.status}`)
+
+  const buffer = Buffer.from(await audioRes.arrayBuffer())
+  await fs.writeFile(outputPath, buffer)
+}
+
 async function downloadAudio(url: string, outputDir: string): Promise<string> {
   const { spawn } = await import('child_process')
   const id = uuidv4()
   // Use a fixed output path — yt-dlp will convert to mp3 and write exactly this file
   const outputPath = path.join(outputDir, `${id}.mp3`)
+
+  if (isYouTubeUrl(url)) {
+    await downloadFromCobalt(url, outputPath)
+    return outputPath
+  }
 
   await new Promise<void>((resolve, reject) => {
     const proc = spawn('yt-dlp', [
