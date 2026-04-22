@@ -17,9 +17,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ jobId: 
     steps: job.steps,
     error: job.error,
     // Flags — client fetches the actual data separately via /api/avatar/media/[jobId]/[type]
-    hasIdleVideo:    !!job.media.idle,
+    hasIdleVideo:    !!job.heygenVideoIds.idle,
     hasTtsAudio:     !!job.media.tts,
-    hasHeygenVideo:  !!job.media.heygen,
+    hasHeygenVideo:  !!job.heygenVideoIds.heygen,
     hasFinalVideo:   !!job.media.final,
   })
 }

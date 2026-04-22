@@ -19,7 +19,9 @@ export interface AvatarJob {
   steps: JobStep[]
   status: 'running' | 'done' | 'error'
   error?: string
-  // Media stored as file paths on disk — buffers are never held in memory long-term
+  // HeyGen video IDs for idle and heygen — videos stay on HeyGen's CDN, never downloaded
+  heygenVideoIds: { idle?: string; heygen?: string }
+  // File paths on disk — only tts (small) and final (served via streaming endpoint)
   media: Partial<Record<MediaType, { filePath: string; mimeType: string }>>
 }
 
@@ -44,6 +46,7 @@ export function createJob(id: string): AvatarJob {
       { label: 'Merging final video', status: 'idle' },
     ],
     status: 'running',
+    heygenVideoIds: {},
     media: {},
   }
   jobs.set(id, job)
@@ -63,6 +66,12 @@ export function updateJobStep(id: string, stepIndex: number, status: JobStep['st
   const job = jobs.get(id)
   if (!job) return
   job.steps[stepIndex] = { ...job.steps[stepIndex], status }
+}
+
+export function setHeygenVideoId(id: string, type: 'idle' | 'heygen', videoId: string): void {
+  const job = jobs.get(id)
+  if (!job) return
+  job.heygenVideoIds[type] = videoId
 }
 
 export function setJobMedia(id: string, type: MediaType, filePath: string, mimeType: string): void {

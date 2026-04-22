@@ -45,15 +45,60 @@ async function generateSilenceMp3(): Promise<Buffer> {
   return buf
 }
 
+async function uploadAsset(apiKey: string, buffer: Buffer, mimeType: string): Promise<string> {
+  const resp = await fetch(UPLOAD_URL, {
+    method: 'POST',
+    headers: { ...headers(apiKey), 'Content-Type': mimeType },
+    body: buffer as unknown as BodyInit,
+  })
+  if (!resp.ok) throw new Error(`HeyGen upload error ${resp.status}: ${await resp.text()}`)
+  const body = await resp.json()
+  return body.data.id as string
+}
+
+/** Polls until the video is complete and returns the presigned video_url. */
+async function pollForVideoUrl(apiKey: string, videoId: string): Promise<string> {
+  const deadline = Date.now() + TIMEOUT_MS
+  while (Date.now() < deadline) {
+    const resp = await fetch(`${BASE_URL}/v1/video_status.get?video_id=${videoId}`, {
+      headers: headers(apiKey),
+    })
+    if (!resp.ok) throw new Error(`HeyGen poll error ${resp.status}: ${await resp.text()}`)
+    const body = await resp.json()
+    const { status, video_url, error } = body.data
+
+    if (status === 'completed') return video_url as string
+    if (status === 'failed') {
+      const detail = error?.detail ?? error?.message ?? 'unknown'
+      throw new Error(`HeyGen render failed (${error?.code ?? '?'}): ${detail}`)
+    }
+
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+  }
+  throw new Error(`HeyGen video ${videoId} timed out after ${TIMEOUT_MS / 1000}s`)
+}
+
+/** Fetches a fresh presigned URL for an already-completed HeyGen video. */
+export async function getHeyGenVideoUrl(videoId: string): Promise<string> {
+  const apiKey = process.env.HEYGEN_API_KEY
+  if (!apiKey) throw new Error('HEYGEN_API_KEY not configured')
+  const resp = await fetch(`${BASE_URL}/v1/video_status.get?video_id=${videoId}`, {
+    headers: headers(apiKey),
+  })
+  if (!resp.ok) throw new Error(`HeyGen get video error ${resp.status}: ${await resp.text()}`)
+  const body = await resp.json()
+  const url = body.data?.video_url
+  if (!url) throw new Error(`HeyGen video ${videoId} has no video_url`)
+  return url as string
+}
+
 /**
- * Generates a 20-second idle video from a portrait image using HeyGen's
- * /v3/videos endpoint (type: "image") with a silent audio track.
- * Produces a still-looking 16:9 720p clip with matching aspect ratio.
+ * Submits an idle video job (image + 20s silence) and polls until complete.
+ * Returns the HeyGen video ID — does NOT download the video.
  */
 export async function generateHeyGenIdleVideo(
   imageBuffer: Buffer,
   imageMime: string,
-  outputPath: string
 ): Promise<string> {
   const apiKey = process.env.HEYGEN_API_KEY
   if (!apiKey) throw new Error('HEYGEN_API_KEY not configured')
@@ -81,25 +126,18 @@ export async function generateHeyGenIdleVideo(
   const videoId: string = body.data?.video_id
   if (!videoId) throw new Error(`HeyGen did not return a video_id: ${JSON.stringify(body)}`)
 
-  return pollAndDownload(apiKey, videoId, outputPath)
+  await pollForVideoUrl(apiKey, videoId)
+  return videoId
 }
 
-async function uploadAsset(apiKey: string, buffer: Buffer, mimeType: string): Promise<string> {
-  const resp = await fetch(UPLOAD_URL, {
-    method: 'POST',
-    headers: { ...headers(apiKey), 'Content-Type': mimeType },
-    body: buffer as unknown as BodyInit,
-  })
-  if (!resp.ok) throw new Error(`HeyGen upload error ${resp.status}: ${await resp.text()}`)
-  const body = await resp.json()
-  return body.data.id as string
-}
-
+/**
+ * Submits a talking-head video job and polls until complete.
+ * Returns the HeyGen video ID — does NOT download the video.
+ */
 export async function generateHeyGenVideo(
   imageBuffer: Buffer,
   imageMime: string,
   audioBuffer: Buffer,
-  outputPath: string,
   opts: {
     expressiveness?: 'low' | 'medium' | 'high'
     resolution?: string
@@ -124,33 +162,11 @@ export async function generateHeyGenVideo(
   const videoId: string = body.video_id ?? body.data?.video_id
   if (!videoId) throw new Error(`HeyGen did not return a video_id: ${JSON.stringify(body)}`)
 
-  return pollAndDownload(apiKey, videoId, outputPath)
+  await pollForVideoUrl(apiKey, videoId)
+  return videoId
 }
 
-async function pollAndDownload(apiKey: string, videoId: string, outputPath: string): Promise<string> {
-  const deadline = Date.now() + TIMEOUT_MS
-  while (Date.now() < deadline) {
-    const resp = await fetch(`${BASE_URL}/v1/video_status.get?video_id=${videoId}`, {
-      headers: headers(apiKey),
-    })
-    if (!resp.ok) throw new Error(`HeyGen poll error ${resp.status}: ${await resp.text()}`)
-    const body = await resp.json()
-    const { status, video_url, error } = body.data
-
-    if (status === 'completed') {
-      return downloadToPath(video_url as string, outputPath)
-    }
-    if (status === 'failed') {
-      const detail = error?.detail ?? error?.message ?? 'unknown'
-      throw new Error(`HeyGen render failed (${error?.code ?? '?'}): ${detail}`)
-    }
-
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-  }
-  throw new Error(`HeyGen video ${videoId} timed out after ${TIMEOUT_MS / 1000}s`)
-}
-
-async function downloadToPath(url: string, dest: string): Promise<string> {
+export async function downloadToPath(url: string, dest: string): Promise<string> {
   const resp = await fetch(url)
   if (!resp.ok || !resp.body) throw new Error(`Failed to download HeyGen video: ${resp.status}`)
   const ws = createWriteStream(dest)

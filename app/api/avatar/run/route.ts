@@ -5,8 +5,8 @@ import { v4 as uuidv4 } from 'uuid'
 import axios from 'axios'
 import FormData from 'form-data'
 import { base64ToBuffer, cleanupTmpFiles } from '@/lib/audio-utils'
-import { generateHeyGenIdleVideo, generateHeyGenVideo } from '@/lib/heygen'
-import { createJob, updateJobStep, setJobMedia, completeJob, failJob } from '@/lib/avatar-jobs'
+import { generateHeyGenIdleVideo, generateHeyGenVideo, getHeyGenVideoUrl } from '@/lib/heygen'
+import { createJob, updateJobStep, setJobMedia, setHeygenVideoId, completeJob, failJob } from '@/lib/avatar-jobs'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // Only needs to cover job creation, not the pipeline itself
@@ -94,9 +94,8 @@ async function runPipeline(
 
     // ── Step 1: HeyGen idle video (image + 20 s silence) ──────────────────
     updateJobStep(jobId, 0, 'running')
-    const idlePath = `/tmp/${id}_idle.mp4`
-    await generateHeyGenIdleVideo(imageBuffer, imageMime, idlePath)
-    setJobMedia(jobId, 'idle', idlePath, 'video/mp4')
+    const idleVideoId = await generateHeyGenIdleVideo(imageBuffer, imageMime)
+    setHeygenVideoId(jobId, 'idle', idleVideoId)
     updateJobStep(jobId, 0, 'done')
 
     // ── Step 2: Cartesia voice + TTS ───────────────────────────────────────
@@ -150,19 +149,21 @@ async function runPipeline(
 
     // ── Step 3: HeyGen ─────────────────────────────────────────────────────
     updateJobStep(jobId, 2, 'running')
-    const heygenPath = `/tmp/${id}_heygen.mp4`
     const ttsBuffer = await fs.readFile(ttsPath)
-    await generateHeyGenVideo(imageBuffer, imageMime, ttsBuffer, heygenPath)
-    setJobMedia(jobId, 'heygen', heygenPath, 'video/mp4')
+    const heygenVideoId = await generateHeyGenVideo(imageBuffer, imageMime, ttsBuffer)
+    setHeygenVideoId(jobId, 'heygen', heygenVideoId)
     updateJobStep(jobId, 2, 'done')
 
-    // ── Step 4: Merge (idle + heygen) ─────────────────────────────────────
+    // ── Step 4: Merge (idle + heygen) — ffmpeg reads directly from HeyGen CDN ──
     updateJobStep(jobId, 3, 'running')
     const finalPath = `/tmp/${id}_final.mp4`
-    // Both clips are 720p 16:9 from HeyGen — simple concat, no scaling needed
+    const [idleUrl, heygenUrl] = await Promise.all([
+      getHeyGenVideoUrl(idleVideoId),
+      getHeyGenVideoUrl(heygenVideoId),
+    ])
     await ffmpeg([
-      '-i', idlePath,
-      '-i', heygenPath,
+      '-i', idleUrl,
+      '-i', heygenUrl,
       '-filter_complex', '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]',
       '-map', '[v]', '-map', '[a]', '-y', finalPath,
     ])

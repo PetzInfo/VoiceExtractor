@@ -180,12 +180,11 @@ export default function AvatarGeneration() {
     try {
       const res = await fetch(`/api/avatar/media/${jobId}/${type}`)
       if (!res.ok) return
-      const { data, mimeType } = await res.json()
-      const src = `data:${mimeType};base64,${data}`
-      if (type === 'idle')    setIdleVideo(src)
-      if (type === 'tts')     setTtsAudio(src)
-      if (type === 'heygen')  setHeygenVideo(src)
-      if (type === 'final')   setFinalVideo(src)
+      const { url } = await res.json()
+      if (type === 'idle')    setIdleVideo(url)
+      if (type === 'tts')     setTtsAudio(url)
+      if (type === 'heygen')  setHeygenVideo(url)
+      if (type === 'final')   setFinalVideo(url)
     } catch { /* non-fatal */ }
   }, [])
 
