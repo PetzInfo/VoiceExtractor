@@ -92,6 +92,15 @@ export default function AvatarGeneration() {
   const imageInputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
 
+  // Upload & Train mode
+  const [mode, setMode] = useState<'generate' | 'upload'>('generate')
+  const [uploadVideo, setUploadVideo] = useState<File | null>(null)
+  const [uploadAvatarName, setUploadAvatarName] = useState('')
+  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
+  const [uploadAvatarId, setUploadAvatarId] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const videoInputRef = useRef<HTMLInputElement>(null)
+
   // ── Derived ────────────────────────────────────────────────────────────────
 
   const hasVoiceId = voiceId.trim().length > 0
@@ -308,6 +317,28 @@ export default function AvatarGeneration() {
     }
   }
 
+  // ── Upload & Train ────────────────────────────────────────────────────────
+
+  async function handleUploadAndTrain() {
+    if (!uploadVideo || !uploadAvatarName.trim() || uploadState === 'uploading') return
+    setUploadState('uploading')
+    setUploadError(null)
+    setUploadAvatarId(null)
+    try {
+      const formData = new FormData()
+      formData.append('video', uploadVideo)
+      formData.append('avatarName', uploadAvatarName.trim())
+      const res = await fetch('/api/avatar/bey-train', { method: 'POST', body: formData })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Upload failed')
+      setUploadAvatarId(data.avatarId)
+      setUploadState('done')
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Unexpected error')
+      setUploadState('error')
+    }
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -331,6 +362,95 @@ export default function AvatarGeneration() {
           Configure an executive avatar with a portrait and voice profile for simulation.
         </p>
       </div>
+
+      {/* Mode toggle */}
+      <div className="flex justify-center mb-8">
+        <div className="inline-flex rounded-xl p-1" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+          {(['generate', 'upload'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className="px-5 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                background: mode === m ? 'var(--accent)' : 'transparent',
+                color: mode === m ? 'white' : 'var(--text-2)',
+              }}
+            >
+              {m === 'generate' ? 'Generate Avatar' : 'Upload & Train'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Upload & Train ── */}
+      {mode === 'upload' && (
+        <Card className="max-w-lg mx-auto">
+          <h3 className="font-semibold text-white text-sm mb-6">Upload finished video to Beyond Presence</h3>
+
+          <div className="mb-5">
+            <SectionLabel>Avatar Name</SectionLabel>
+            <input
+              type="text"
+              value={uploadAvatarName}
+              onChange={(e) => setUploadAvatarName(e.target.value)}
+              placeholder="e.g. Max Mustermann"
+              className="w-full rounded-lg px-4 py-2.5 text-sm text-white"
+              style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)' }}
+            />
+          </div>
+
+          <div className="mb-6">
+            <SectionLabel>Video File</SectionLabel>
+            <p className="text-xs mb-3" style={{ color: 'var(--text-3)' }}>Minimum 2:40 (160 seconds)</p>
+            <input ref={videoInputRef} type="file" accept="video/*" className="hidden"
+              onChange={(e) => setUploadVideo(e.target.files?.[0] ?? null)} />
+            <button
+              onClick={() => videoInputRef.current?.click()}
+              className="w-full rounded-lg px-4 py-3 text-sm border-dashed border-2 transition-colors"
+              style={{ borderColor: 'var(--border)', color: uploadVideo ? 'var(--accent)' : 'var(--text-3)' }}
+            >
+              {uploadVideo ? uploadVideo.name : 'Choose video file'}
+            </button>
+          </div>
+
+          <button
+            onClick={handleUploadAndTrain}
+            disabled={!uploadVideo || !uploadAvatarName.trim() || uploadState === 'uploading'}
+            className="w-full rounded-xl px-6 py-3 text-sm font-semibold text-white transition-opacity"
+            style={{
+              background: uploadVideo && uploadAvatarName.trim() ? 'var(--accent)' : 'var(--bg-hover)',
+              opacity: uploadState === 'uploading' ? 0.7 : 1,
+            }}
+          >
+            {uploadState === 'uploading' ? 'Uploading…' : 'Train Avatar'}
+          </button>
+
+          {uploadState === 'uploading' && (
+            <p className="text-xs mt-4 text-center" style={{ color: 'var(--text-3)' }}>
+              Validating and uploading to Beyond Presence — this may take a minute…
+            </p>
+          )}
+
+          {uploadState === 'done' && uploadAvatarId && (
+            <div className="mt-5 rounded-lg px-4 py-3" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)' }}>
+              <p className="text-xs font-semibold text-green-400 mb-1">Training started</p>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>Avatar ID</p>
+              <p className="text-sm font-mono text-white break-all">{uploadAvatarId}</p>
+              <p className="text-xs mt-2" style={{ color: 'var(--text-3)' }}>Training takes ~5–6 hours.</p>
+            </div>
+          )}
+
+          {uploadState === 'error' && uploadError && (
+            <div className="mt-5 rounded-lg px-4 py-3" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+              <p className="text-xs font-semibold text-red-400 mb-1">Upload failed</p>
+              <p className="text-xs text-red-300">{uploadError}</p>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* ── Generate Avatar ── */}
+      {mode === 'generate' && (<>
 
       {/* Reconnect notice */}
       {activeJobId && generating && !steps.some(s => s.status !== 'idle') && (
@@ -742,6 +862,8 @@ export default function AvatarGeneration() {
       <footer className="mt-16 pt-6 text-center text-xs" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-3)' }}>
         Exec Voice Replic8 — Security Awareness Training Platform — Authorized use only
       </footer>
+
+      </>)}
     </div>
   )
 }
