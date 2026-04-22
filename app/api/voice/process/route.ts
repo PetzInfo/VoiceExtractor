@@ -46,7 +46,9 @@ async function downloadFromRapidApi(url: string, outputPath: string): Promise<vo
 
   if (!link) throw new Error('RapidAPI did not return a download link after retries')
 
-  const audioRes = await fetch(link)
+  const audioRes = await fetch(link, {
+    headers: { Referer: 'https://youtube-mp36.p.rapidapi.com' },
+  })
   if (!audioRes.ok) throw new Error(`Failed to fetch MP3 from RapidAPI: ${audioRes.status}`)
 
   const buffer = Buffer.from(await audioRes.arrayBuffer())
@@ -385,7 +387,7 @@ export async function POST(req: Request) {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return NextResponse.json(
-        { error: `Failed to download audio: ${message}. Ensure youtube-dl/yt-dlp is installed.` },
+        { error: `Failed to download audio: ${message}` },
         { status: 422 }
       )
     }
