@@ -21,6 +21,7 @@ interface VoiceOutput {
   lastName: string
   salutation: 'HE' | 'SHE' | 'NOT_FOUND'
   email: string
+  role: string
   phoneNumber: string
   recordingLanguage: string
   provider: string

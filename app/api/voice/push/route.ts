@@ -83,6 +83,7 @@ export async function POST(req: Request) {
       lastName,
       salutation,
       email: '',
+      role: 'CEO',
       phoneNumber: '',
       recordingLanguage: voiceLanguage.toUpperCase(),
       provider: 'cartesia',
