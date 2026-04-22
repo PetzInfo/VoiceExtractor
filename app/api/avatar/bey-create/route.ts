@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import * as fs from 'fs/promises'
 import { getJobMedia } from '@/lib/avatar-jobs'
 
 export const runtime = 'nodejs'
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Final video not ready or job not found' }, { status: 404 })
   }
 
-  const videoBuffer = media.buffer
+  const videoBuffer = await fs.readFile(media.filePath)
   const numChunks = Math.ceil(videoBuffer.length / CHUNK_SIZE)
 
   try {
