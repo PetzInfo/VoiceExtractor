@@ -51,8 +51,13 @@ async function downloadFromRapidApi(url: string, outputPath: string): Promise<vo
   })
   if (!audioRes.ok) throw new Error(`Failed to fetch MP3 from RapidAPI: ${audioRes.status}`)
 
-  const buffer = Buffer.from(await audioRes.arrayBuffer())
-  await fs.writeFile(outputPath, buffer)
+  const { pipeline } = await import('stream/promises')
+  const { createWriteStream } = await import('fs')
+  const { Readable } = await import('stream')
+  await pipeline(
+    Readable.fromWeb(audioRes.body as import('stream/web').ReadableStream),
+    createWriteStream(outputPath)
+  )
 }
 
 async function downloadAudio(url: string, outputDir: string): Promise<string> {
