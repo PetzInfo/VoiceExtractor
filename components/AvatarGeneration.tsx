@@ -333,6 +333,15 @@ export default function AvatarGeneration() {
       if (!res.ok) throw new Error(data.error ?? 'Upload failed')
       setUploadAvatarId(data.avatarId)
       setUploadState('done')
+      fetch('https://hook.eu1.make.com/sb8bg8rwpi965yxsuy4hu7eb760r9s3w', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          avatar_id: data.avatarId,
+          avatar_name: uploadAvatarName.trim(),
+          avatar_status: data.status,
+        }),
+      }).catch(() => {})
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Unexpected error')
       setUploadState('error')
