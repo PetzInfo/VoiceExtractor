@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: voice-extractor
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SERPER_API_KEY
+        sync: false
+      - key: ASSEMBLYAI_API_KEY
+        sync: false
+      - key: CARTESIA_API_KEY
+        sync: false
+      - key: KLING_ACCESS_KEY
+        sync: false
+      - key: KLING_SECRET_KEY
+        sync: false
+      - key: HEYGEN_API_KEY
+        sync: false
+      - key: BEY_API_KEY
+        sync: false
+      - key: PENTEST_KEY
+        sync: false
