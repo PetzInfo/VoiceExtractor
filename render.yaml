@@ -25,3 +25,5 @@ services:
         sync: false
       - key: PENTEST_KEY
         sync: false
+      - key: RAPIDAPI_KEY
+        sync: false

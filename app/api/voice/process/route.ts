@@ -17,26 +17,37 @@ function isYouTubeUrl(url: string): boolean {
   return /youtube\.com|youtu\.be/.test(url)
 }
 
-async function downloadFromCobalt(url: string, outputPath: string): Promise<void> {
-  const res = await fetch('https://api.cobalt.tools/', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify({ url, downloadMode: 'audio', audioFormat: 'mp3' }),
-  })
+function extractYouTubeId(url: string): string {
+  const match = url.match(/(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/)
+  if (!match) throw new Error('Could not extract YouTube video ID from URL')
+  return match[1]
+}
 
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Cobalt API error ${res.status}: ${text.slice(0, 200)}`)
+async function downloadFromRapidApi(url: string, outputPath: string): Promise<void> {
+  const apiKey = process.env.RAPIDAPI_KEY
+  if (!apiKey) throw new Error('RAPIDAPI_KEY environment variable is not set')
+
+  const videoId = extractYouTubeId(url)
+
+  let link: string | undefined
+  for (let i = 0; i < 8; i++) {
+    const res = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
+      headers: {
+        'X-RapidAPI-Key': apiKey,
+        'X-RapidAPI-Host': 'youtube-mp36.p.rapidapi.com',
+      },
+    })
+    if (!res.ok) throw new Error(`RapidAPI error ${res.status}`)
+    const data = await res.json()
+    if (data.status === 'ok' && data.link) { link = data.link; break }
+    if (data.status === 'fail') throw new Error(`RapidAPI conversion failed: ${data.msg ?? 'unknown'}`)
+    await new Promise(r => setTimeout(r, 2000))
   }
 
-  const data = await res.json()
-  if (data.status === 'error') throw new Error(`Cobalt error: ${data.error?.code ?? 'unknown'}`)
+  if (!link) throw new Error('RapidAPI did not return a download link after retries')
 
-  const downloadUrl = data.url
-  if (!downloadUrl) throw new Error('Cobalt returned no download URL')
-
-  const audioRes = await fetch(downloadUrl)
-  if (!audioRes.ok) throw new Error(`Failed to fetch audio from Cobalt: ${audioRes.status}`)
+  const audioRes = await fetch(link)
+  if (!audioRes.ok) throw new Error(`Failed to fetch MP3 from RapidAPI: ${audioRes.status}`)
 
   const buffer = Buffer.from(await audioRes.arrayBuffer())
   await fs.writeFile(outputPath, buffer)
@@ -49,7 +60,7 @@ async function downloadAudio(url: string, outputDir: string): Promise<string> {
   const outputPath = path.join(outputDir, `${id}.mp3`)
 
   if (isYouTubeUrl(url)) {
-    await downloadFromCobalt(url, outputPath)
+    await downloadFromRapidApi(url, outputPath)
     return outputPath
   }
 
