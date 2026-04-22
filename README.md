@@ -77,6 +77,7 @@ Open [http://localhost:3000](http://localhost:3000) and log in with the password
 | `CARTESIA_API_KEY` | Voice cloning + TTS | play.cartesia.ai |
 | `HEYGEN_API_KEY` | Idle video + talking-head video generation (avatar pipeline) | heygen.com |
 | `BEY_API_KEY` | Beyond Presence avatar training (optional) | beyondpresence.ai |
+| `RAPIDAPI_KEY` | YouTube audio download (youtube-mp36) | rapidapi.com/ytjar/api/youtube-mp36 |
 
 Copy `.env.local.example` to `.env.local` and fill in each value. Keys marked "avatar pipeline" are only required for the Avatar Generation feature.
 
@@ -125,7 +126,7 @@ Once happy with the clip, click **Push to Cartesia**. The voice is cloned and a 
 
 ### Voice Extraction
 - **Podcasts work best** — RSS-based download, reliable from any server
-- **YouTube may fail on hosted deployments** due to datacenter IP blocking; works fine locally
+- **YouTube downloads** use the RapidAPI `youtube-mp36` service — requires `RAPIDAPI_KEY`
 - Speaker diarization requires AssemblyAI. Without `ASSEMBLYAI_API_KEY`, the tool falls back to a fixed 60–90s clip
 - Voice clips should be 15–30s of clean, uninterrupted speech for best Cartesia results
 
